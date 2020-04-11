@@ -3,20 +3,12 @@ var FakeNet = require("./FakeNet")
 // CODE FOR MANUAL TEST - // TODO: DELETE
 
     var fakenet = new FakeNet({
-        blocktime : 50000,
+        blocktime : 2500,
         txCount : 20,
+            existingContainerId : "f0abce39dc15"
     });
 
-    (async function () {
-        await fakenet.start();
-        console.log("FakeNet Started");
-
-        setTimeout(async () => {
-            const Client = require('bitcoin-core');
-            const client = new Client({ username: 'fakenet', password: 'fakenet', port: 8332 });
-            console.log(JSON.stringify(await client.getBlockchainInfo()));
-        }, 5000);
-    })();
+    fakenet.start();
 
 // CODE FOR MANUAL TEST - // TODO: DELETE
 
