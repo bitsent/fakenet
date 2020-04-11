@@ -12,7 +12,7 @@ class FakeTxHandler {
         this.broadcast = broadcastFunction;
         this.utxoLock = Lock();
     }
-
+    
     chances = {
         plusOneInputChance: 0.33,
         plusOneOutputChance: 0.40,
@@ -50,17 +50,17 @@ class FakeTxHandler {
         };
     }
 
-    usingUtxoFile = async function (func = (u)=>{}) {
-        this.utxoLock(async ()=>{
-            utxoData = { coinbaseUtxo: [], utxo: [] }
-            if (fs.existsSync(utxoFile))
-                utxoData = JSON.parse(await this.readFile(utxoFile));
+    usingUtxoFile = async (func) => {
+        this.utxoLock(async () => {
+            var utxoData = { coinbaseUtxo: [], utxo: [] }
+            if (fs.existsSync(this.utxoFile))
+                utxoData = JSON.parse(await this.readFile(this.utxoFile));
             var newData = await func(utxoData);
             if (!newData) {
                 console.log("No UTXO data retruned. Assuming this was a Read-Only operation.");
                 return;
             }
-            await this.writeFile(utxoFile)
+            await this.writeFile(this.utxoFile, JSON.stringify(newData));
         });
     }
 
@@ -149,8 +149,8 @@ class FakeTxHandler {
     createTransactions = async function (count) {
         var transactions = [];
         await this.usingUtxoFile(async (utxoData) => {
-            if (utxoData.length == 0)
-                return []; // no inputs
+            if (utxoData.utxo.length == 0)
+                return; // no change
 
             for (let i = 0; i < count; i++) {
                 var inputs = [];
@@ -158,14 +158,14 @@ class FakeTxHandler {
                 var opReturn = null;
 
                 inputs.push(utxoData.utxo.splice(this.getRandomIndex(utxoData.utxo.length), 1)[0]);
-                while (utxoData.utxo.length > 0 && this.checkChance(chances.plusOneInputChance))
+                while (utxoData.utxo.length > 0 && this.checkChance(this.chances.plusOneInputChance))
                     inputs.push(utxoData.utxo.splice(this.getRandomIndex(utxoData.utxo.length), 1)[0]);
 
                 outputWifArray.push(this.getNewPrivKey());
-                while (this.checkChance(chances.plusOneOutputChance))
+                while (this.checkChance(this.chances.plusOneOutputChance))
                     outputWifArray.push(this.getNewPrivKey());
 
-                if (this.checkChance(chances.opReturnOutputChance))
+                if (this.checkChance(this.chances.opReturnOutputChance))
                     opReturns.push(opReturnTexts[this.getRandomIndex(opReturnTexts.length)]);
 
                 var tx = this.createTransaction(inputs, outputWifArray[0], outputWifArray, null, opReturn)
@@ -181,7 +181,7 @@ class FakeTxHandler {
                     utxoMergeCount = i + 1
                 else break;
 
-            if (this.checkChance(chances.groupSmallerHalfUtxosChance))
+            if (this.checkChance(this.chances.groupSmallerHalfUtxosChance))
                 utxoMergeCount = Math.max(utxoMergeCount, utxoData.utxo.length / 2 | 0)
 
             if (utxoMergeCount > 1) {
