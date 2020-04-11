@@ -1,5 +1,6 @@
 var fs = require("fs");
 var bsv = require("bsv");
+var Lock = require("lock-taskqueue");
 
 class FakeTxHandler {
 
@@ -9,6 +10,7 @@ class FakeTxHandler {
         throw new Error("Broadcast Not Implemented!"); 
     }) {
         this.broadcast = broadcastFunction;
+        this.utxoLock = Lock();
     }
 
     chances = {
@@ -48,16 +50,18 @@ class FakeTxHandler {
         };
     }
 
-    usingUtxoFile = async function (func = async (utxoData) => { }) {
-        utxoData = { coinbaseUtxo: [], utxo: [] }
-        if (fs.existsSync(utxoFile))
-            utxoData = JSON.parse(await this.readFile(utxoFile));
-        var newData = await func(utxoData);
-        if (!newData) {
-            console.log("No UTXO data retruned. Assuming this was a Read-Only operation.");
-            return;
-        }
-        await this.writeFile(utxoFile)
+    usingUtxoFile = async function (func = (u)=>{}) {
+        this.utxoLock(async ()=>{
+            utxoData = { coinbaseUtxo: [], utxo: [] }
+            if (fs.existsSync(utxoFile))
+                utxoData = JSON.parse(await this.readFile(utxoFile));
+            var newData = await func(utxoData);
+            if (!newData) {
+                console.log("No UTXO data retruned. Assuming this was a Read-Only operation.");
+                return;
+            }
+            await this.writeFile(utxoFile)
+        });
     }
 
     addBlockUtxo = async function (coinbaseUtxo) {
@@ -76,7 +80,7 @@ class FakeTxHandler {
             }
             spendableIndexes = spendableIndexes.sort((a, b) => b - a)
             spendableIndexes.forEach(i => {
-                var spendable = utxoData.coinbaseUtxo.splice(i, 1);
+                var spendable = utxoData.coinbaseUtxo.splice(i, 1)[0];
                 utxoData.utxo.push(spendable.utxo);
             });
 
@@ -153,9 +157,9 @@ class FakeTxHandler {
                 var outputWifArray = [];
                 var opReturn = null;
 
-                inputs.push(utxoData.utxo.splice(this.getRandomIndex(utxoData.utxo.length), 1));
+                inputs.push(utxoData.utxo.splice(this.getRandomIndex(utxoData.utxo.length), 1)[0]);
                 while (utxoData.utxo.length > 0 && this.checkChance(chances.plusOneInputChance))
-                    inputs.push(utxoData.utxo.splice(this.getRandomIndex(utxoData.utxo.length), 1));
+                    inputs.push(utxoData.utxo.splice(this.getRandomIndex(utxoData.utxo.length), 1)[0]);
 
                 outputWifArray.push(this.getNewPrivKey());
                 while (this.checkChance(chances.plusOneOutputChance))
@@ -221,7 +225,7 @@ class FakeTxHandler {
                 var tx = this.createTransaction(inputs, changeWif, [wif], amount);
                 this.broadcast(tx.hex);
 
-                resultUtxo = tx.utxo.splice(0,1);
+                resultUtxo = tx.utxo.splice(0,1)[0];
                 utxoData.utxo = utxoData.utxo.concat(tx.utxo);
             }
 
