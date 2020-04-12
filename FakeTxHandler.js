@@ -5,12 +5,14 @@ var Lock = require("lock-taskqueue");
 class FakeTxHandler {
 
     utxoFile = "utxo.json";
+    utxoCoinbaseFile = "utxo_coinbase.json";
 
     constructor (broadcastFunction = (hexTx) => {
         throw new Error("Broadcast Not Implemented!"); 
     }) {
         this.broadcast = broadcastFunction;
         this.utxoLock = Lock();
+        this.utxoCoinbaseLock = Lock();
     }
     
     chances = {
@@ -51,31 +53,54 @@ class FakeTxHandler {
         };
     }
 
-    usingUtxoFile = async (func) => {
-        this.utxoLock(async () => {
-            var utxoData = []
-            if (fs.existsSync(this.utxoFile))
-                utxoData = JSON.parse(await this.readFile(this.utxoFile));
-            var newData = await func(utxoData);
+    usingJsonFile = async (func, file, lock) => {
+        lock(async () => {
+            var data = []
+            if (fs.existsSync(file))
+                data = JSON.parse(await this.readFile(file));
+            var newData = await func(data);
             if (newData === undefined) {
-                console.log("No UTXO data retruned. Assuming this was a Read-Only operation.");
+                console.log(`No changes made to ${file}.`);
                 return;
             }
-            await this.writeFile(this.utxoFile, JSON.stringify(newData, null, 4));
+            await this.writeFile(file, JSON.stringify(newData, null, 4));
         });
     }
 
-    addUtxos = async function (utxoArray) {
-        return this.usingUtxoFile(async (utxoData) => {
-            utxoData = utxoData.concat(utxoArray.map(this.asInput));
+    usingUtxoFile = async (func) => { 
+        return this.usingJsonFile(func, this.utxoFile, this.utxoLock);
+    }
+
+    usingUtxoCoinbaseFile = async (func) => { 
+        return this.usingJsonFile(func, this.utxoCoinbaseFile, this.utxoCoinbaseLock); 
+    }
+
+    addSpendableUtxos = async function (utxoArray) {
+        return this.usingUtxoFile(utxoData=> {
+            return utxoData.concat(utxoArray);
+        });
+    }
+
+    addCoinbaseUtxos = async function (utxoArray) {
+        return this.usingUtxoCoinbaseFile(async (utxoData) => {
+            utxoData = utxoData.concat(utxoArray);
+            utxoData = utxoData.sort(i=>i.height);
+
+            var maxHeight = utxoData[utxoData.length-1].height;
+            var index = 0;
+            for (let i = 0; i < utxoData.length; i++)
+                if (utxoData[i].height < maxHeight - 100)
+                    index++;
+            var spendableUtxo = utxoData.splice(0, index);
+            this.addSpendableUtxos(spendableUtxo);
+
             return utxoData;
         });
     }
 
     reset = async function () {
-        return this.usingUtxoFile(async () => {
-            return [];
-        });
+        await this.usingUtxoFile(() => []);
+        await this.usingUtxoCoinbaseFile(() => []);
     }
 
     createTransaction = function (inputs, changeWif, outputWifArray, perOutputAmount=null, opReturn = null) {

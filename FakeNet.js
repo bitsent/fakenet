@@ -2,22 +2,30 @@ const bsv = require('bsv');
 var fs = require('fs');
 var path = require('path');
 var exec = require('child_process').exec;
-const RpcClient = require('bitcoin-core');
 
 var FakeTxHandler = require('./FakeTxHandler')
 
 var myExec = (command) => {
     return new Promise((resolve,reject)=> {
-        console.log(">> START RUNNING : " + command);
+        console.log(">> RUNNING : " + command);
         exec(command, (err, stdout, stderr) => {
-            if(stdout) console.log(stdout);
-            if(stderr) console.log(stderr);
-            console.log("<< DONE RUNNING : " + command);
+            var toLog = [stdout, stderr].filter(i=>i).join("\n")
+            //if(toLog) console.log(toLog);
             if(err) reject(err);
             resolve({stdout, stderr});
         })
     });
 };
+
+function awaitableTimeout(func, timeout){
+    return new Promise(async (resolve, reject) => {
+        setTimeout(async ()=>{
+            try { await func() }
+            catch (error) { reject(error); }
+            resolve();
+        }, timeout);
+    })
+}
 
 const defaultOptions = {
     blocktime : 60000, // 1 minute blocks
@@ -36,7 +44,7 @@ const defaultOptions = {
     ],
     existingContainerId : null,
     tryAttachToLastContainer: false,
-    newBlockCallback: () => console.log("NEW BLOCK!")
+    newBlockCallback: (block) => console.log("NEW BLOCK! #" + block.height)
 }
 
 class FakeNet {
@@ -48,14 +56,16 @@ class FakeNet {
                 this[i] = o[i]!==undefined? o[i] : defaultOptions[i];
 
         const _newBlockCallback = o.newBlockCallback || defaultOptions.newBlockCallback;
-        this.newBlockCallback = async () => {
+        this.newBlockCallback = async (block) => {
             try {
-                await _newBlockCallback()
+                await _newBlockCallback(block)
             } catch (error) {
                 console.log("newBlockCallback Error: " + error);
             }
         } 
     }
+
+    minerPrivKey = bsv.PrivateKey.fromRandom("regtest");
 
     getDockerRegtestCMD = function () {
         var paramList = this.bitcoindParams.concat([]);
@@ -104,15 +114,9 @@ class FakeNet {
         
         const self = this;
 
-        const _rpcClient = new RpcClient({ 
-            network: 'regtest', 
-            username: this.rpcuser,
-            password: this.rpcpassword,
-            port: this.rpcport 
-        });
         const _broadcast = async (hexTx) => {
             try {
-                await _rpcClient.sendRawTransaction(hexTx);
+                self.executeBitcoinCliCommand(`sendrawtransaction "${hexTx}"`)
             } catch (error) {
                 throw new Error("Failed to broadcast TX: \n" + hexTx + "\n" + error);
             }
@@ -126,36 +130,52 @@ class FakeNet {
 
         this.broadcast = _broadcast;
 
-        this.mineBlocks = async (count) => {
-            await _rpcClient.generate(count);
-            var funds = await _rpcClient.getBalance();
-            if(funds > 1) {
-                var amount = funds - 0.5;
-                var priv = bsv.PrivateKey.fromRandom("regtest");
-                var addr = bsv.Address.fromPrivateKey(priv).toString();
-                var txid = await _rpcClient.sendToAddress(addr, amount);
+        var _minerAddr = bsv.Address.fromPrivateKey(self.minerPrivKey).toString();
 
-                var sats = parseInt(amount * 100000000);
-                var scriptPubKey = bsv.Script.fromAddress(addr).toHex();
-                _fakeTxHandler.addUtxos([{
-                    txid: txid, vout: 0, satoshis: sats, scriptPubKey: scriptPubKey, privkey: priv.toString()
-                }]);
-            }
-            return funds;
+        
+        this.mineBlocks = async (count=1) => {
+            var blockHashes = await self.executeBitcoinCliCommand(`generatetoaddress ${count} "${_minerAddr}"`);
+            var blockTasks = blockHashes.map(self.registerCoinbaseTx);
+            for (let i = 0; i < blockTasks.length; i++)
+                await blockTasks[i];
+            return blockTasks[blockTasks.length-1];
+        }
+
+        this.registerCoinbaseTx = async (blockHash) => {
+            var block = await self.executeBitcoinCliCommand(`getblock ${blockHash}`);
+            var out = await self.executeBitcoinCliCommand(`gettxout "${block.tx[0]}" 0`);
+            _fakeTxHandler.addCoinbaseUtxos([{
+                height: block.height,
+                txid: block.tx[0],
+                vout: 0,
+                satoshis: out.value * 100000000,
+                scriptPubKey: out.scriptPubKey.hex,
+                privkey: self.minerPrivKey.toString()
+            }])
+            return block;
         }
 
         if(shouldInitialize){
-            return new Promise(async (resolve, reject) => {
-                await _fakeTxHandler.reset();
-                setTimeout(()=>{
-                    try { self.mineBlocks(101); }
-                    catch (error) { reject(error); }
-                    resolve();
-                }, 5000);
-                
-            })
+            await _fakeTxHandler.reset();
+            await awaitableTimeout(async () => {
+                var block = await self.mineBlocks(101)
+                console.log("LOADED : #" + block.height);
+            }, 5000);
         }
-        else return;
+    }
+
+    executeBitcoinCliCommand = async function (command) {
+        var completeCommand = `docker exec ${this.existingContainerId} `+
+            `bitcoin-cli -regtest -rpcport=${this.rpcport} -rpcuser=${this.rpcuser} -rpcpassword=${this.rpcpassword} `+
+            command;
+
+        var output = await myExec(completeCommand);
+
+        try {
+            return JSON.parse(output.stdout);
+        } catch (error) {
+            return output.stdout;
+        }
     }
 
     getLastContainerId = async function () {
@@ -171,8 +191,8 @@ class FakeNet {
 
         const self = this;
         this.activeLoopId = setInterval(async () =>{
-            var amountAdded = await self.mineBlocks(1)
-            self.newBlockCallback();
+            var block = await self.mineBlocks()
+            self.newBlockCallback(block);
             await self.createTransactions(self.txCount);
         }, this.blocktime)
     }
