@@ -1,0 +1,22 @@
+getminingcandidate coinbase (optional, default false)
+
+Returns Mining-Candidate protocol data.
+
+Arguments:
+1. "coinbase"        (boolean, optional) True if a coinbase transaction is required in result
+Result: (json string)
+    {
+                         
+        "id": n,              (string) Candidate identifier for submitminingsolution
+        "prevhash": "xxxx", (hex string) Hash of the previous block
+        "coinbase": "xxxx", (optional hex string encoded binary transaction) Coinbase transaction
+        "version": n,         (integer) Block version
+        "nBits": "xxxx",    (hex string) Difficulty
+        "time": n,            (integer) Block time
+        "height": n,          (integer) Current Block Height
+        "merkleProof": [      (list of hex strings) Merkle branch for the block
+                          xxxx,
+                          yyyy,
+                         ]
+    }
+

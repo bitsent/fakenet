@@ -1,0 +1,21 @@
+submitminingsolution "<json string>" 
+
+Attempts to submit a new block to the network.
+
+Json Object should comprise of the following and must be escaped
+    {
+        "id": n,           (string) ID from getminingcandidate RPC
+        "nonce": n,        (integer) Miner generated nonce
+        "coinbase": "",  (hex string, optional) Modified Coinbase transaction
+        "time": n,         (integer, optional) Block time
+        "version": n       (integer, optional) Block version
+    }
+
+Result:
+
+Nothing on success, error string if block was rejected.
+Identical to "submitblock".
+
+Examples:
+> curl --user myusername --data-binary '{"jsonrpc": "1.0", "id":"curltest", "method": "submitminingsolution", "params": ["<json string>"] }' -H 'content-type: text/plain;' http://127.0.0.1:8332/
+

@@ -1,0 +1,7 @@
+settxnpropagationfreq freq
+
+Set the frequency (in milli-seconds) the transaction propagator runs at.
+
+Arguments:
+1. "freq"        (numeric, required) the frequency in milliseconds
+

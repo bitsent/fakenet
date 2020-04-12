@@ -1,0 +1,14 @@
+checkjournal
+
+Checks for consistency between the TX memory pool and the block assembly journal.
+
+Result:
+{
+  "ok": xx,                    (boolean) True if check passed, False otherwise
+  "errors": xxxxx,             (string) If check failed, a string listing the errors
+}
+
+Examples:
+> bitcoin-cli checkjournal 
+> curl --user myusername --data-binary '{"jsonrpc": "1.0", "id":"curltest", "method": "checkjournal", "params": [] }' -H 'content-type: text/plain;' http://127.0.0.1:8332/
+

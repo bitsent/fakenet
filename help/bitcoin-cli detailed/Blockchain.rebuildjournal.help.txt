@@ -1,0 +1,10 @@
+rebuildjournal
+
+Forces the block assembly journal to be rebuilt to make it consistent with the TX mempool.
+
+Result:
+
+Examples:
+> bitcoin-cli rebuildjournal 
+> curl --user myusername --data-binary '{"jsonrpc": "1.0", "id":"curltest", "method": "rebuildjournal", "params": [] }' -H 'content-type: text/plain;' http://127.0.0.1:8332/
+

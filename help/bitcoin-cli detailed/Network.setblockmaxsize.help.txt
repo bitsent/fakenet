@@ -1,0 +1,10 @@
+setblockmaxsize blockSize
+
+Sets maximum size of produced block.
+Result
+  blockSize (integer) block size in bytes
+
+Examples:
+> bitcoin-cli setblockmaxsize 
+> curl --user myusername --data-binary '{"jsonrpc": "1.0", "id":"curltest", "method": "setblockmaxsize", "params": [] }' -H 'content-type: text/plain;' http://127.0.0.1:8332/
+

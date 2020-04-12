@@ -1,0 +1,14 @@
+getrawnonfinalmempool
+
+Returns all transaction ids in the non-final memory pool as a json array of string transaction ids.
+
+Result:
+[                     (json array of string)
+  "transactionid"     (string) The transaction id
+  ,...
+]
+
+Examples:
+> bitcoin-cli getrawnonfinalmempool 
+> curl --user myusername --data-binary '{"jsonrpc": "1.0", "id":"curltest", "method": "getrawnonfinalmempool", "params": [] }' -H 'content-type: text/plain;' http://127.0.0.1:8332/
+
