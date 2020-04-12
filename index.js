@@ -5,7 +5,7 @@ var FakeNet = require("./FakeNet")
     var fakenet = new FakeNet({
         blocktime : 2500,
         txCount : 20,
-            existingContainerId : "f0abce39dc15"
+        tryAttachToLastContainer : true
     });
 
     fakenet.start();

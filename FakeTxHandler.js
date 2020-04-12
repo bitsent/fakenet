@@ -38,13 +38,14 @@ class FakeTxHandler {
     getRandomIndex = function (len) { return Math.floor(Math.random() * len); }
     checkChance = function (chance) { return Math.random() <= chance; }
 
-    getNewPrivKey = function () { bsv.PrivateKey.fromRandom().toString() }
-
+    getNewPrivKey = () => bsv.PrivateKey.fromRandom("regtest").toString();
+    wifToAddr = (wif) => bsv.Address.fromPrivateKey(bsv.PrivateKey.fromWIF(wif)).toString();
+    
     asInput = function (obj) {
         return {
             txid: obj.txid.toString(),
-            vout: obj.vout,
-            amount: obj.amount.toString(),
+            vout: parseInt(obj.vout),
+            satoshis: parseInt(obj.satoshis),
             scriptPubKey: obj.scriptPubKey.toString(),
             privkey: obj.privkey.toString()
         };
@@ -52,39 +53,28 @@ class FakeTxHandler {
 
     usingUtxoFile = async (func) => {
         this.utxoLock(async () => {
-            var utxoData = { coinbaseUtxo: [], utxo: [] }
+            var utxoData = []
             if (fs.existsSync(this.utxoFile))
                 utxoData = JSON.parse(await this.readFile(this.utxoFile));
             var newData = await func(utxoData);
-            if (!newData) {
+            if (newData === undefined) {
                 console.log("No UTXO data retruned. Assuming this was a Read-Only operation.");
                 return;
             }
-            await this.writeFile(this.utxoFile, JSON.stringify(newData));
+            await this.writeFile(this.utxoFile, JSON.stringify(newData, null, 4));
         });
     }
 
-    addBlockUtxo = async function (coinbaseUtxo) {
+    addUtxos = async function (utxoArray) {
         return this.usingUtxoFile(async (utxoData) => {
-            utxoData.coinbaseUtxo.concat(coinbaseUtxo.map(utxo=> {
-                return{
-                    blocksLeft: 100,
-                    utxo: this.asInput(utxo)
-                }
-            }));
-
-            var spendableIndexes = []
-            for (let i = 0; i < utxoData.coinbaseUtxo.length; i++) {
-                var blocksLeft = utxoData.coinbaseUtxo[i].blocksLeft--;
-                if (blocksLeft < 0) spendableIndexes.push(i);
-            }
-            spendableIndexes = spendableIndexes.sort((a, b) => b - a)
-            spendableIndexes.forEach(i => {
-                var spendable = utxoData.coinbaseUtxo.splice(i, 1)[0];
-                utxoData.utxo.push(spendable.utxo);
-            });
-
+            utxoData = utxoData.concat(utxoArray.map(this.asInput));
             return utxoData;
+        });
+    }
+
+    reset = async function () {
+        return this.usingUtxoFile(async () => {
+            return [];
         });
     }
 
@@ -92,8 +82,8 @@ class FakeTxHandler {
         if (outputWifArray.length < 1)
             throw new Error("outputWifArray cannot be empty!");
 
-        var inAmount = inputs.map(i => parseFloat(i.amount)).reduce((a, b) => a + b, 0);
-        perOutputAmount = perOutputAmount || ((inAmount / outputWifArray.length) - 500);
+        var inAmount = inputs.map(i => parseFloat(i.satoshis)).reduce((a, b) => a + b, 0);
+        perOutputAmount = parseInt(perOutputAmount || ((inAmount / outputWifArray.length) - 500));
 
         if(inAmount < 2000)
             throw new Error("Inputs are too small");
@@ -101,10 +91,11 @@ class FakeTxHandler {
             throw new Error("Outputs are too small");
 
         var tx = bsv.Transaction();
-        tx.from(inputs.map(i => this.asInput(i)));
+        for (let i = 0; i < inputs.length; i++)
+            tx.from(this.asInput(inputs[i]));
 
-        for (let i = 1; i < outputWifArray.length; i++)
-            tx.to(wifToAddr(outputWifArray[i]), perOutputAmount);
+        for (let i = 0; i < outputWifArray.length; i++)
+            tx.to(this.wifToAddr(outputWifArray[i]), perOutputAmount);
 
         if (opReturn)
             tx.addData(opReturn);
@@ -116,7 +107,7 @@ class FakeTxHandler {
         if (change < 0)
             throw new Error("Not enough Funds")
         if (sendChange)
-            tx.to(wifToAddr(changeWif), change)
+            tx.to(this.wifToAddr(changeWif), change)
 
         for (let i = 1; i < inputs.length; i++)
             tx.sign(inputs[i].privkey);
@@ -124,11 +115,11 @@ class FakeTxHandler {
         if(sendChange)
             tx.sign(changeWif); 
 
-        var utxo = outputWifArray.forEach((wif, i) => {
+        var utxo = outputWifArray.map((wif, i) => {
             return {
                 txid: tx.hash,
                 vout: i,
-                amount: tx.outputs[i].satoshis,
+                satoshis: tx.outputs[i].satoshis,
                 scriptPubKey: tx.outputs[i].script.toHex(),
                 privkey: wif
             }
@@ -137,7 +128,7 @@ class FakeTxHandler {
         if (sendChange) {
             var changeVout = tx.outputs.length-1;
             var changeScript = tx.outputs[changeVout];
-            utxo.push({ txid: tx.hash, vout: changeVout, amount: change, scriptPubKey: changeScript, privkey: changeWif });
+            utxo.push({ txid: tx.hash, vout: changeVout, satoshis: change, scriptPubKey: changeScript, privkey: changeWif });
         }
 
         return {
@@ -149,7 +140,7 @@ class FakeTxHandler {
     createTransactions = async function (count) {
         var transactions = [];
         await this.usingUtxoFile(async (utxoData) => {
-            if (utxoData.utxo.length == 0)
+            if (utxoData.length == 0)
                 return; // no change
 
             for (let i = 0; i < count; i++) {
@@ -157,39 +148,39 @@ class FakeTxHandler {
                 var outputWifArray = [];
                 var opReturn = null;
 
-                inputs.push(utxoData.utxo.splice(this.getRandomIndex(utxoData.utxo.length), 1)[0]);
-                while (utxoData.utxo.length > 0 && this.checkChance(this.chances.plusOneInputChance))
-                    inputs.push(utxoData.utxo.splice(this.getRandomIndex(utxoData.utxo.length), 1)[0]);
+                inputs.push(utxoData.splice(this.getRandomIndex(utxoData.length), 1)[0]);
+                while (utxoData.length > 0 && this.checkChance(this.chances.plusOneInputChance))
+                    inputs.push(utxoData.splice(this.getRandomIndex(utxoData.length), 1)[0]);
 
                 outputWifArray.push(this.getNewPrivKey());
                 while (this.checkChance(this.chances.plusOneOutputChance))
                     outputWifArray.push(this.getNewPrivKey());
 
                 if (this.checkChance(this.chances.opReturnOutputChance))
-                    opReturns.push(opReturnTexts[this.getRandomIndex(opReturnTexts.length)]);
+                    opReturn = this.opReturnTexts[this.getRandomIndex(this.opReturnTexts.length)];
 
                 var tx = this.createTransaction(inputs, outputWifArray[0], outputWifArray, null, opReturn)
                 transactions.push(tx.hex);
-                utxoData.utxo = utxoData.utxo.concat(tx.utxo);
+                utxoData = utxoData.concat(tx.utxo);
             }
 
-            utxoData.utxo = utxo.sort((a, b) => a.amount - b.amount);
+            utxoData = utxoData.sort((a, b) => a.satoshis - b.satoshis);
 
             var utxoMergeCount = 0;
-            for (let i = 0; i < utxoData.utxo.length; i++)
-                if (utxoData.utxo[i].amount < this.settings.autoMergeUTXOLowerThan)
+            for (let i = 0; i < utxoData.length; i++)
+                if (utxoData[i].satoshis < this.settings.autoMergeUTXOLowerThan)
                     utxoMergeCount = i + 1
                 else break;
 
             if (this.checkChance(this.chances.groupSmallerHalfUtxosChance))
-                utxoMergeCount = Math.max(utxoMergeCount, utxoData.utxo.length / 2 | 0)
+                utxoMergeCount = Math.max(utxoMergeCount, utxoData.length / 2 | 0)
 
             if (utxoMergeCount > 1) {
-                var inputs = utxoData.utxo.splice(0, utxoMergeCount);
+                var inputs = utxoData.splice(0, utxoMergeCount);
                 var wif = this.getNewPrivKey();
                 var tx = this.createTransaction(inputs, wif, [wif])
                 transactions.push(tx.hex);
-                utxoData.utxo = utxoData.utxo.concat(tx.utxo);
+                utxoData = utxoData.concat(tx.utxo);
             }
 
             for (let i = 0; i < transactions.length; i++)
@@ -200,33 +191,33 @@ class FakeTxHandler {
         return transactions.length;
     }
 
-    getFunds = async function (amount) {
+    getFunds = async function (satoshis) {
         resultUtxo = null;
         await this.usingUtxoFile(async (utxoData) => {
             if (utxoData.length == 0)
                 return []; // no inputs
 
-            utxoData.utxo = utxo.sort((a, b) => a.amount - b.amount);
+            utxoData = utxo.sort((a, b) => a.satoshis - b.satoshis);
 
             var takeTillIndex = 0;
             var amountToTake = 0
-            for (let i = 0; i < utxoData.utxo.length; i++) {
+            for (let i = 0; i < utxoData.length; i++) {
                 takeTillIndex=i;
-                amountToTake += utxoData.utxo.amount;
-                if (amountToTake > amount + 5000)
+                amountToTake += utxoData.satoshis;
+                if (amountToTake > satoshis + 5000)
                     break;
             }
 
             if (takeTillIndex >= 1) {
-                var inputs = utxoData.utxo.splice(0, utxoMergeCount);
+                var inputs = utxoData.splice(0, utxoMergeCount);
                 var wif = this.getNewPrivKey();
                 var changeWif = this.getNewPrivKey();
 
-                var tx = this.createTransaction(inputs, changeWif, [wif], amount);
+                var tx = this.createTransaction(inputs, changeWif, [wif], satoshis);
                 this.broadcast(tx.hex);
 
                 resultUtxo = tx.utxo.splice(0,1)[0];
-                utxoData.utxo = utxoData.utxo.concat(tx.utxo);
+                utxoData = utxoData.concat(tx.utxo);
             }
 
             return utxoData;
