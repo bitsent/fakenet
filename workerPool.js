@@ -8,9 +8,6 @@ function Pool(workerCount) {
     return (async function (task) {
         var i = Math.floor(Math.random() * workers.length);
         var worker = workers[i];
-        
-        console.log(`Worker ${i} working on (${task + ""})`)
-
         return await worker(task);
     })
 }
