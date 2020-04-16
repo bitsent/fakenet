@@ -1,13 +1,13 @@
 {
   "name": "fakenet",
   "version": "0.0.1",
-  "description": "A fake bitcoin network running locally (uses RegTest mode of bitcoind). Defaults to BitcoinSV, but will probably work with other chains too",
+  "description": "A fake bitcoin network running locally (uses RegTest mode of bitcoind).",
   "main": "index.js",
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1"
   },
   "author": "Aleksandar Dinkov",
-  "license": "ISC",
+  "license": "LICENSE.md",
   "dependencies": {
     "bsv": "^1.5.0",
     "lock-taskqueue": "^1.0.1",
