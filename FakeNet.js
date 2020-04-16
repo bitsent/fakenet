@@ -2,7 +2,7 @@ const bsv = require('bsv');
 var fs = require('fs');
 var path = require('path');
 
-var FakeTxHandler = require('./FakeTxHandler')
+var FakeTxHandler = require('./fakeTxHandler')
 var myExec = require('./myExec')
 var awaitableTimeout = require('./awaitableTimeout')
 
@@ -45,15 +45,50 @@ function FakeNet(o = defaultOptions) {
     existingContainerId = o.existingContainerId || defaultOptions.existingContainerId;
     tryAttachToLastContainer = o.tryAttachToLastContainer || defaultOptions.tryAttachToLastContainer;
 
+    _activeLoopId = null;
+    _fakeTxHandler = new FakeTxHandler(broadcast);
+    _minerPrivKey = bsv.PrivateKey.fromRandom("regtest");
+    _minerAddr = bsv.Address.fromPrivateKey(_minerPrivKey).toString();
     _newBlockCallback = o.newBlockCallback || defaultOptions.newBlockCallback;
-    newBlockCallback = async (block) => {
-        try { return _newBlockCallback(block); } 
+
+    async function newBlockCallback(block) {
+        try { return await _newBlockCallback(block); } 
         catch (error) { console.log("newBlockCallback Error: " + error); }
     }
 
-    minerPrivKey = bsv.PrivateKey.fromRandom("regtest");
+    async function broadcast(hexTx) {
+        try { return await executeBitcoinCliCommand(`sendrawtransaction "${hexTx}"`); }
+        catch (error) { throw new Error("Failed to broadcast TX: \n" + hexTx + "\n" + error); }
+    }
 
-    activeLoopId = null;
+    async function getInfo() { return await executeBitcoinCliCommand(`getinfo`); }
+
+    async function getFunds(amount) { return await _fakeTxHandler.getFunds(amount); }
+
+    async function createTransactions(count) { return await _fakeTxHandler.createTransactions(count); }
+
+    async function mineBlocks(count=1) {
+        var blockHashes = await executeBitcoinCliCommand(`generatetoaddress ${count} "${_minerAddr}"`);
+        
+        var blocks = [];
+        for (let i = 0; i < blockHashes.length; i++)
+            blocks.push(await registerCoinbaseTx(blockHashes[i]));
+        return blocks[blocks.length - 1];
+    }
+
+    async function registerCoinbaseTx(blockHash) {
+        var block = await executeBitcoinCliCommand(`getblock ${blockHash}`);
+        var out = await executeBitcoinCliCommand(`gettxout "${block.tx[0]}" 0`);
+        _fakeTxHandler.addCoinbaseUtxos([{
+            height: block.height,
+            txid: block.tx[0],
+            vout: 0,
+            satoshis: out.value * 100000000,
+            scriptPubKey: out.scriptPubKey.hex,
+            privkey: _minerPrivKey.toString()
+        }])
+        return block;
+    }
     
     function getDockerRegtestCMD() {
         var paramList = bitcoindParams.concat([]);
@@ -90,58 +125,13 @@ function FakeNet(o = defaultOptions) {
         var shouldInitialize = !existingContainerId
         if (shouldInitialize) {
             var imageName = dockerImageName.replace("{version}", version);
-            var p1 = port;
-            var p2 = rpcport;
-
             await getDockerImages();
-            var buildOutput = await myExec("docker build -t " + imageName + " .\\docker-sv\\sv\\" + version);
-            var runOutput = await myExec("docker run -p " + p1 + ":" + p1 + " -p " + p2 + ":" + p2 + " -d -t " + imageName);
+            await myExec("docker build -t " + imageName + " .\\docker-sv\\sv\\" + version);
+            await myExec("docker run -p " + port + ":" + port + " -p " + rpcport + ":" + rpcport + " -d -t " + imageName);
 
             existingContainerId = await getLastContainerId();
         }
         
-        const _broadcast = async (hexTx) => {
-            try {
-                await executeBitcoinCliCommand(`sendrawtransaction "${hexTx}"`)
-            } catch (error) {
-                throw new Error("Failed to broadcast TX: \n" + hexTx + "\n" + error);
-            }
-        };
-        const _fakeTxHandler = new FakeTxHandler(_broadcast)
-
-        createTransactions = (count) => _fakeTxHandler.createTransactions(count);
-
-        getInfo = async () => await _rpcClient.getBlockchainInfo();
-        getFunds = (amount) => _fakeTxHandler.getFunds(amount);
-
-        broadcast = _broadcast;
-
-        var _minerAddr = bsv.Address.fromPrivateKey(minerPrivKey).toString();
-
-        
-        mineBlocks = async (count=1) => {
-            var blockHashes = await executeBitcoinCliCommand(`generatetoaddress ${count} "${_minerAddr}"`);
-            
-            var blocks = [];
-            for (let i = 0; i < blockHashes.length; i++)
-                blocks.push(await registerCoinbaseTx(blockHashes[i]));
-            return blocks[blocks.length - 1];
-        }
-
-        registerCoinbaseTx = async (blockHash) => {
-            var block = await executeBitcoinCliCommand(`getblock ${blockHash}`);
-            var out = await executeBitcoinCliCommand(`gettxout "${block.tx[0]}" 0`);
-            _fakeTxHandler.addCoinbaseUtxos([{
-                height: block.height,
-                txid: block.tx[0],
-                vout: 0,
-                satoshis: out.value * 100000000,
-                scriptPubKey: out.scriptPubKey.hex,
-                privkey: minerPrivKey.toString()
-            }])
-            return block;
-        }
-
         if(shouldInitialize){
             await _fakeTxHandler.reset();
             await awaitableTimeout(async () => {
@@ -151,7 +141,7 @@ function FakeNet(o = defaultOptions) {
         }
     }
 
-    async function executeBitcoinCliCommand(command, runInWorkerQueue = true) {
+    async function executeBitcoinCliCommand(command) {
         var executeOnBitcoinCli = `docker exec ${existingContainerId} `+
             `bitcoin-cli -regtest -rpcport=${rpcport} -rpcuser=${rpcuser} -rpcpassword=${rpcpassword} `;
 
@@ -171,7 +161,7 @@ function FakeNet(o = defaultOptions) {
     }
 
     async function start() {
-        if (activeLoopId)
+        if (_activeLoopId)
             throw new Error("Fakenet is already running.");
         await setup();
 
@@ -188,26 +178,30 @@ function FakeNet(o = defaultOptions) {
             }
         }
 
-        activeLoopId = setInterval(repeatFunction, blocktime)
+        _activeLoopId = setInterval(repeatFunction, blocktime)
         repeatFunction();
     }
 
     async function stop() {
-        if (!activeLoopId)
+        if (!_activeLoopId)
             throw new Error("Fakenet is already stopped.");
-        clearInterval(activeLoopId);
-        activeLoopId = undefined;
+        clearInterval(_activeLoopId);
+        _activeLoopId = undefined;
     }
 
     return {
-        getDockerRegtestCMD,
+        executeBitcoinCliCommand,
+        createTransactions,
         getDockerImages,
         setup,
-        executeBitcoinCliCommand,
-        getLastContainerId,
         start,
         stop,
+        getInfo,
+        getFunds,
+        mineBlocks,
+        broadcast,
     }
 }
 
 module.exports = FakeNet;
+

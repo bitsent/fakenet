@@ -60,7 +60,7 @@ function FakeTxHandler(broadcastFunction, o = {
     }
 
     async function usingJsonFile(func, file, lock) {
-        lock(async () => {
+        await lock(async () => {
             var data = []
             if (fs.existsSync(file))
                 data = JSON.parse(await readFile(file));
@@ -74,11 +74,11 @@ function FakeTxHandler(broadcastFunction, o = {
     }
 
     async function usingUtxoFile(func) {
-        return usingJsonFile(func, utxoFile, utxoLock);
+        return await usingJsonFile(func, utxoFile, utxoLock);
     }
 
     async function usingUtxoCoinbaseFile(func) {
-        return usingJsonFile(func, utxoCoinbaseFile, utxoCoinbaseLock);
+        return await usingJsonFile(func, utxoCoinbaseFile, utxoCoinbaseLock);
     }
 
     async function addSpendableUtxos(utxoArray) {
@@ -132,7 +132,7 @@ function FakeTxHandler(broadcastFunction, o = {
             tx=tx.addData(opReturn);
 
         var feeNeeded = (tx.toString().length / 2) + 400;
-        var change = inAmount - (perOutputAmount * outputWifArray) - feeNeeded
+        var change = inAmount - (perOutputAmount * outputWifArray.length) - feeNeeded
         var sendChange = change > 1000
 
         if (change < 0)
@@ -223,28 +223,28 @@ function FakeTxHandler(broadcastFunction, o = {
             if (utxoData.length == 0)
                 return []; // no inputs
 
-            utxoData = utxo.sort((a, b) => a.satoshis - b.satoshis);
-
+            utxoData = utxoData.sort((a, b) => a.satoshis - b.satoshis);
             var takeTillIndex = 0;
             var amountToTake = 0
+
             for (let i = 0; i < utxoData.length; i++) {
-                takeTillIndex = i;
-                amountToTake += utxoData.satoshis;
+                takeTillIndex++;
+                amountToTake += utxoData[i].satoshis;
                 if (amountToTake > satoshis + 5000)
                     break;
             }
 
-            if (takeTillIndex >= 1) {
-                var inputs = utxoData.splice(0, utxoMergeCount);
-                var wif = getNewPrivKey();
-                var changeWif = getNewPrivKey();
+            if (!takeTillIndex || amountToTake < satoshis + 5000)
+                throw new Error("Not enough funds");
 
-                var tx = createTransaction(inputs, changeWif, [wif], satoshis);
-                await broadcast(tx.hex);
+            var inputs = utxoData.splice(0, takeTillIndex);
+            var wif = getNewPrivKey();
+            var changeWif = getNewPrivKey();
 
-                resultUtxo = tx.utxo.splice(0, 1)[0];
-                utxoData = utxoData.concat(tx.utxo);
-            }
+            var tx = createTransaction(inputs, changeWif, [wif], satoshis);
+            await broadcast(tx.hex);
+            resultUtxo = tx.utxo.splice(0, 1)[0];
+            utxoData = utxoData.concat(tx.utxo);
 
             return utxoData;
         })
