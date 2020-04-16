@@ -2,17 +2,20 @@ var fs = require("fs");
 var bsv = require("bsv");
 var Lock = require("lock-taskqueue");
 
+SATS_IN_B = 100000000;
+
 default_utxoFile = "utxo.json";
 default_utxoCoinbaseFile = "utxo_coinbase.json";
 default_chances = {
     plusOneInputChance: 0.33,
     plusOneOutputChance: 0.40,
     opReturnOutputChance: 0.10,
-    groupSmallerHalfUtxosChance: 0.01,
+    forgetSmallerHalfUtxosChance: 0.01,
 }
 default_settings = {
-    autoMergeUTXOLowerThan: 20000,
+    autoForgetUTXOLowerThan: (0.1 * SATS_IN_B) | 0,
 }
+
 default_opReturnTexts = [
     "Hello World!",
     "Anyone listening?",
@@ -120,28 +123,26 @@ function FakeTxHandler(broadcastFunction, o = {
 
         var tx = bsv.Transaction();
         for (let i = 0; i < inputs.length; i++)
-            tx.from(asInput(inputs[i]));
-
+            tx=tx.from(asInput(inputs[i]));
+        
         for (let i = 0; i < outputWifArray.length; i++)
-            tx.to(wifToAddr(outputWifArray[i]), perOutputAmount);
+            tx=tx.to(wifToAddr(outputWifArray[i]), perOutputAmount);
 
         if (opReturn)
-            tx.addData(opReturn);
+            tx=tx.addData(opReturn);
 
         var feeNeeded = (tx.toString().length / 2) + 400;
         var change = inAmount - (perOutputAmount * outputWifArray) - feeNeeded
         var sendChange = change > 1000
 
         if (change < 0)
-            throw new Error("Not enough Funds")
-        if (sendChange)
-            tx.to(wifToAddr(changeWif), change)
-
-        for (let i = 1; i < inputs.length; i++)
-            tx.sign(inputs[i].privkey);
+            throw new Error("Not enough Funds");
 
         if (sendChange)
-            tx.sign(changeWif);
+            tx=tx.to(wifToAddr(changeWif), change)
+
+        for (let i = 0; i < inputs.length; i++)
+            tx=tx.sign(inputs[i].privkey);
 
         var utxo = outputWifArray.map((wif, i) => {
             return {
@@ -171,6 +172,22 @@ function FakeTxHandler(broadcastFunction, o = {
             if (utxoData.length == 0)
                 return; // no change
 
+            utxoData = utxoData.sort((a, b) => a.satoshis - b.satoshis);
+
+            var utxoForgetCount = 0;
+            for (let i = 0; i < utxoData.length; i++)
+                if (utxoData[i].satoshis < settings.autoForgetUTXOLowerThan)
+                utxoForgetCount = i + 1
+                else break;
+    
+            if (checkChance(chances.forgetSmallerHalfUtxosChance))
+                utxoForgetCount = Math.max(utxoForgetCount, utxoData.length / 2 | 0)
+    
+            if (utxoForgetCount > 1) {
+                var forgottenUtxos = utxoData.splice(0, utxoForgetCount);
+                console.log(`Forgot ${forgottenUtxos.length} UTXOs...`);
+            }
+    
             for (let i = 0; i < count; i++) {
                 var inputs = [];
                 var outputWifArray = [];
@@ -192,27 +209,8 @@ function FakeTxHandler(broadcastFunction, o = {
                 utxoData = utxoData.concat(tx.utxo);
             }
 
-            utxoData = utxoData.sort((a, b) => a.satoshis - b.satoshis);
-
-            var utxoMergeCount = 0;
-            for (let i = 0; i < utxoData.length; i++)
-                if (utxoData[i].satoshis < settings.autoMergeUTXOLowerThan)
-                    utxoMergeCount = i + 1
-                else break;
-
-            if (checkChance(chances.groupSmallerHalfUtxosChance))
-                utxoMergeCount = Math.max(utxoMergeCount, utxoData.length / 2 | 0)
-
-            if (utxoMergeCount > 1) {
-                var inputs = utxoData.splice(0, utxoMergeCount);
-                var wif = getNewPrivKey();
-                var tx = createTransaction(inputs, wif, [wif])
-                transactions.push(tx.hex);
-                utxoData = utxoData.concat(tx.utxo);
-            }
-
             for (let i = 0; i < transactions.length; i++)
-                /*await*/ broadcast(transactions[i]);
+                await broadcast(transactions[i]);
 
             return utxoData;
         })
@@ -242,7 +240,7 @@ function FakeTxHandler(broadcastFunction, o = {
                 var changeWif = getNewPrivKey();
 
                 var tx = createTransaction(inputs, changeWif, [wif], satoshis);
-                broadcast(tx.hex);
+                await broadcast(tx.hex);
 
                 resultUtxo = tx.utxo.splice(0, 1)[0];
                 utxoData = utxoData.concat(tx.utxo);

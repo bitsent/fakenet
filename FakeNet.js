@@ -3,7 +3,6 @@ var fs = require('fs');
 var path = require('path');
 
 var FakeTxHandler = require('./FakeTxHandler')
-var workerPool = require('./workerPool')
 var myExec = require('./myExec')
 var awaitableTimeout = require('./awaitableTimeout')
 
@@ -32,16 +31,6 @@ const defaultOptions = {
     newBlockCallback: (block) => console.log(`NEW BLOCK! #${block.height} (${block.tx.length} transactions)`)
 }
 
-function asyncTryFunc (func) {
-    return async () => {
-        try {
-            return await func.apply(null, arguments);
-        } catch (error) {
-            console.log("asyncTryFunc Error: " + error);
-        }
-    }
-}
-
 function FakeNet(o = defaultOptions) {
 
     blocktime = o.blocktime || defaultOptions.blocktime;
@@ -56,10 +45,12 @@ function FakeNet(o = defaultOptions) {
     existingContainerId = o.existingContainerId || defaultOptions.existingContainerId;
     tryAttachToLastContainer = o.tryAttachToLastContainer || defaultOptions.tryAttachToLastContainer;
 
-    newBlockCallback = asyncTryFunc(o.newBlockCallback || defaultOptions.newBlockCallback);
+    _newBlockCallback = o.newBlockCallback || defaultOptions.newBlockCallback;
+    newBlockCallback = async (block) => {
+        try { return _newBlockCallback(block); } 
+        catch (error) { console.log("newBlockCallback Error: " + error); }
+    }
 
-    bitcoinCliWorkerPool = workerPool(10);
-    
     minerPrivKey = bsv.PrivateKey.fromRandom("regtest");
 
     activeLoopId = null;
@@ -111,9 +102,7 @@ function FakeNet(o = defaultOptions) {
         
         const _broadcast = async (hexTx) => {
             try {
-                console.log("Broadcast")
                 await executeBitcoinCliCommand(`sendrawtransaction "${hexTx}"`)
-                console.log("Broadcast Done")
             } catch (error) {
                 throw new Error("Failed to broadcast TX: \n" + hexTx + "\n" + error);
             }
@@ -132,11 +121,11 @@ function FakeNet(o = defaultOptions) {
         
         mineBlocks = async (count=1) => {
             var blockHashes = await executeBitcoinCliCommand(`generatetoaddress ${count} "${_minerAddr}"`);
-            var blockTasks = blockHashes.map(registerCoinbaseTx);
-            var result = null;
-            for (let i = 0; i < blockTasks.length; i++)
-                result = await blockTasks[i];
-            return result;
+            
+            var blocks = [];
+            for (let i = 0; i < blockHashes.length; i++)
+                blocks.push(await registerCoinbaseTx(blockHashes[i]));
+            return blocks[blocks.length - 1];
         }
 
         registerCoinbaseTx = async (blockHash) => {
@@ -162,11 +151,11 @@ function FakeNet(o = defaultOptions) {
         }
     }
 
-    async function executeBitcoinCliCommand(command) {
+    async function executeBitcoinCliCommand(command, runInWorkerQueue = true) {
         var executeOnBitcoinCli = `docker exec ${existingContainerId} `+
             `bitcoin-cli -regtest -rpcport=${rpcport} -rpcuser=${rpcuser} -rpcpassword=${rpcpassword} `;
 
-        var output = await bitcoinCliWorkerPool(eval(`( () => myExec(executeOnBitcoinCli + '${command}') )`));
+        var output = await myExec(executeOnBitcoinCli + command);
 
         try {
             return JSON.parse(output.stdout);
@@ -186,17 +175,21 @@ function FakeNet(o = defaultOptions) {
             throw new Error("Fakenet is already running.");
         await setup();
 
-        activeLoopId = setInterval(async () =>{
+        var repeatFunction = async () =>{
             try {
-                var block = await mineBlocks()
+                var block = await mineBlocks(1);
                 await newBlockCallback(block);
-                await createTransactions(txCount);
+                for (let i = 0; i < txCount; i++)
+                    await createTransactions(1);
             } catch (error) {
                 console.error(error);
-                console.log("STOPPING FAKENET");
+                console.error("STOPPING FAKENET");
                 stop();
             }
-        }, blocktime)
+        }
+
+        activeLoopId = setInterval(repeatFunction, blocktime)
+        repeatFunction();
     }
 
     async function stop() {
