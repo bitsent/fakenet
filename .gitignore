@@ -1,3 +1,6 @@
 node_modules
 docker-sv
 .vscode
+
+utxo.json
+utxo_coinbase.json
