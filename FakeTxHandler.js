@@ -156,7 +156,7 @@ function FakeTxHandler(broadcastFunction, o = {
 
         if (sendChange) {
             var changeVout = tx.outputs.length - 1;
-            var changeScript = tx.outputs[changeVout];
+            var changeScript = tx.outputs[changeVout].script.toHex();
             utxo.push({ txid: tx.hash, vout: changeVout, satoshis: change, scriptPubKey: changeScript, privkey: changeWif });
         }
 
