@@ -114,11 +114,11 @@ function FakeTxHandler(broadcastFunction, o = {
             throw new Error("outputWifArray cannot be empty!");
 
         var inAmount = inputs.map(i => parseFloat(i.satoshis)).reduce((a, b) => a + b, 0);
-        perOutputAmount = parseInt(perOutputAmount || ((inAmount / outputWifArray.length) - 500));
+        perOutputAmount = parseInt(perOutputAmount || ((inAmount / outputWifArray.length) - 2000));
 
-        if (inAmount < 2000)
+        if (inAmount < 5000)
             throw new Error("Inputs are too small");
-        if (perOutputAmount < 1000)
+        if (perOutputAmount < 2000)
             throw new Error("Outputs are too small");
 
         var tx = bsv.Transaction();
@@ -131,7 +131,7 @@ function FakeTxHandler(broadcastFunction, o = {
         if (opReturn)
             tx=tx.addData(opReturn);
 
-        var feeNeeded = (tx.toString().length / 2) + 400;
+        var feeNeeded = (tx.toString().length / 2) + 500;
         var change = inAmount - (perOutputAmount * outputWifArray.length) - feeNeeded
         var sendChange = change > 1000
 
@@ -204,13 +204,16 @@ function FakeTxHandler(broadcastFunction, o = {
                 if (checkChance(chances.opReturnOutputChance))
                     opReturn = opReturnTexts[getRandomIndex(opReturnTexts.length)];
 
-                var tx = createTransaction(inputs, outputWifArray[0], outputWifArray, null, opReturn)
-                transactions.push(tx.hex);
-                utxoData = utxoData.concat(tx.utxo);
+                try {
+                    var tx = createTransaction(inputs, outputWifArray[0], outputWifArray, null, opReturn)
+                    transactions.push(tx.hex);
+                    await broadcast(tx.hex);
+                    utxoData = utxoData.concat(tx.utxo);
+                } catch (error) {
+                    console.error("Broadcast Failed. Deleting problematic inputs.\n"
+                        +"Error message was:\n" + error)
+                }
             }
-
-            for (let i = 0; i < transactions.length; i++)
-                await broadcast(transactions[i]);
 
             return utxoData;
         })
