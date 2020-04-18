@@ -1,6 +1,6 @@
 {
   "name": "fakenet",
-  "version": "0.0.1",
+  "version": "0.0.2",
   "description": "A fake bitcoin network running locally (uses RegTest mode of bitcoind).",
   "main": "index.js",
   "scripts": {
