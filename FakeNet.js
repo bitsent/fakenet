@@ -148,7 +148,7 @@ function FakeNet(o = defaultOptions) {
             if(!fs.existsSync(dockerFilePath))
                 return;
             var lines = fs.readFileSync(dockerFilePath).toString().split("\n");
-            var linesFixed = lines.map(l => l.replace(/CMD \[?\"bitcoind\"\]?/, `CMD ["node" ".\runLocally.js"]`))
+            var linesFixed = lines.map(l => l.replace(/CMD \[?\"bitcoind\"\]?/, `CMD ["node" ".\service.js"]`))
             fs.writeFileSync(dockerFilePath, linesFixed.join("\n"));
         });
     }
@@ -182,7 +182,7 @@ function FakeNet(o = defaultOptions) {
             existingContainerId = await getLastContainerId();
         }
         
-        if(runBitcoindLocally || existingContainerId){
+        if(runBitcoindLocally || !tryAttachToLastContainer){
             await _fakeTxHandler.reset();
             await awaitableTimeout(async () => {
                 var block = await mineBlocks(101)
@@ -190,7 +190,8 @@ function FakeNet(o = defaultOptions) {
             }, 5000);
         }
 
-        _setupDone;
+        console.log("SETUP DONE");
+        _setupDone=true;
     }
 
     async function executeBitcoinCliCommand(command) {

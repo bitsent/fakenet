@@ -54,6 +54,8 @@
         resize: vertical;
         display: block;
         width: 60%;
+        overflow-wrap: normal;
+        text-align: left;
     }
 </style>
 
@@ -141,7 +143,7 @@
         var defaultValues = {
             configure: `<<<defaultOptions>>>`,
             getFunds: "10000000",
-            execute: "getInfo",
+            execute: "getinfo",
             createTransactions: "5",
             mine: "2",
             broadcast: "",
@@ -186,13 +188,6 @@
                 buttonText: "Send"
             },
             {
-                path: "/setupStatus",
-                type: "GET",
-                title: "setupStatus",
-                inputs: [ ],
-                buttonText: "Send"
-            },
-            {
                 path: "/setup",
                 type: "POST",
                 title: "setup",
@@ -210,13 +205,6 @@
                 path: "/stop",
                 type: "POST",
                 title: "stop",
-                inputs: [ ],
-                buttonText: "Send"
-            },
-            {
-                path: "/delete",
-                type: "POST",
-                title: "delete",
                 inputs: [ ],
                 buttonText: "Send"
             },
@@ -299,8 +287,8 @@
             var inputsHTML = form.inputs.map((v,i) => {
                 var hint = v.hint? t+'<span>' + v.hint + '</span>': '';
                 var input = v.type == "textarea" 
-                    ? t + `<textarea id="${inputIDs[i]}" style="resize:vertical;">${v.defaultValue}</textarea>` // rows="5"
-                    : t + `<input type="${v.type}" value="${v.defaultValue}" >`;
+                    ? t + `<textarea id="${inputIDs[i]}" style="resize:vertical;">${v.defaultValue}</textarea>`
+                    : t + `<input id="${inputIDs[i]}" type="${v.type}" value="${v.defaultValue}" >`;
                 return "\n" + hint + "\n" + input;
             }).join("\n");
             
@@ -310,7 +298,7 @@
                 return form.inputs.map((v,i) => {
                     var val = window[inputIDs[i]].value;
                     try {
-                        v.parseData(val)
+                        return v.parseData(val)
                     } catch (error) {
                         alert("Data Parsing Failed: \n" + error + "\n\n Value = " + val);
                         throw error;
@@ -340,34 +328,26 @@
         });
         
         requestAreas.innerHTML = formsHtml.join("")
-
-
-    </script>
-
-    <script>
-        // options.value = `<<<defaultOptions>>>`;
-        // amount.value = parseInt(`<<<defaultAmount>>>`) || 5000000;
     </script>
 
     <script>
         async function req(method, path, body, showResultsInId) {
-            method = method.toLowerCase();
-
+            method = method.toUpperCase();
             var resultContainer = document.getElementById(showResultsInId);
             resultContainer.style.display = "";
             resultContainer.innerHTML = "loading..."
 
             try {
                 let response = null;
-                if (method == "post") {
+                if (method == "POST") {
                     var fetchOptions = { method: method };
                     if(body) {
                         fetchOptions.body = JSON.stringify({params:body}),
                         fetchOptions.headers = { 'Content-Type': 'application/json' }
                     }
-                    response = await fetch(path, );
+                    response = await fetch(path, fetchOptions);
                 }
-                else if (method == "get")
+                else if (method == "GET")
                     response = await fetch(path, { method: method });
 
                 var result = await response.text();

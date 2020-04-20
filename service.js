@@ -8,33 +8,45 @@ app.use(express.json());
 
 const port = 3000;
 
+
+function wrap(app, realMethod, callType, path, handler) {
+    var wrappedHandler = async (req, res) => {
+        var logLineStart = `${callType} ${path}`;
+        var space = '.'.repeat(Math.max(4, 30-logLineStart.length));
+        console.log(`${logLineStart} ${space} body: ${JSON.stringify(req.body)}`)
+        try { await handler(req,res); }
+        catch (error) { res.status(500).send(error+""); }
+    };
+    return realMethod.call(app, path, wrappedHandler);
+}
+
+var _get = (path,handler) => wrap(app, app.get, "GET", path, handler);
+var _post = (path,handler) => wrap(app, app.post, "POST", path, handler);
+
+
 (async function () {
     var _fakenet = null;
 
-    app.get('/status', async (req, res) => {
-        var configured = _fakenet != false;
+    _get('/status', async (req, res) => {
+        var configured = !!_fakenet;
         res.send({
             configured: configured,
+            setupStatus: configured? await _fakenet.checkSetupStatus() : null,
             isRunning: configured && await _fakenet.isRunning()
         })
     })
-    app.get('/info', async (req, res) => {
+    _get('/info', async (req, res) => {
         if(!_fakenet)
             return res.status(400).send("FakeNet not configured")
         res.send(await _fakenet.getInfo());
     })
-    app.get('/setupStatus', async (req, res) => {
-        if(!_fakenet)
-            return res.status(400).send("FakeNet not configured")
-        res.send(await _fakenet.checkSetupStatus());
-    })
-    app.post('/configure', (req, res) => {
+    _post('/configure', async (req, res) => {
         if(_fakenet)
             return res.status(400).send("FakeNet already configured")
         _fakenet = fakeNet(req.body.params[0] || {});
         res.send("done")
     })
-    app.post('/setup', async (req, res) => {
+    _post('/setup', async (req, res) => {
         if(!_fakenet)
             return res.status(400).send("FakeNet not configured")
         var status = await _fakenet.checkSetupStatus();
@@ -42,65 +54,62 @@ const port = 3000;
             await _fakenet.setup();
         res.send("done")
     })
-    app.post('/start', async (req, res) => {
+    _post('/start', async (req, res) => {
         if(!_fakenet)
             return res.status(400).send("FakeNet not configured")
         if(! await _fakenet.isRunning())
             await _fakenet.start();
         res.send("done")
     })
-    app.post('/stop', async (req, res) => {
+    _post('/stop', async (req, res) => {
         if(!_fakenet)
             return res.status(400).send("FakeNet not configured")
         if(await _fakenet.isRunning())
             await _fakenet.stop();
         res.send("done")
     })
-    app.post('/delete', async (req, res) => {
-        if(!_fakenet)
-            return res.status(400).send("No present FakeNet to delete")
-        if(await _fakenet.isRunning())
-            await _fakenet.stop();
-        _fakenet = null;
-        res.send("done")
-    })
-    app.post('/getFunds', async (req, res) => {
+    _post('/getFunds', async (req, res) => {
         if(!_fakenet)
             return res.status(400).send("FakeNet not configured")
-        if(! await _fakenet.isRunning(0))
-            return res.status(400).send("FakeNet not running")
+        var setupStatus = await _fakenet.checkSetupStatus()
+        if(!setupStatus.done)
+            return res.status(400).send("FakeNet Setup not done")
         var amount = parseInt(req.body.params[0]);
         res.send(await _fakenet.getFunds(amount));
     })
-    app.post('/execute', async (req, res) => {
+    _post('/execute', async (req, res) => {
         if(!_fakenet)
             return res.status(400).send("FakeNet not configured")
-        if(! await _fakenet.isRunning(0))
-            return res.status(400).send("FakeNet not running")
+        var setupStatus = await _fakenet.checkSetupStatus()
+        if(!setupStatus.done)
+            return res.status(400).send("FakeNet Setup not done")
         var command = req.body.params[0].toString();
         res.send(await _fakenet.executeBitcoinCliCommand(command));
     })
-    app.post('/createTransactions', async (req, res) => {
+    _post('/createTransactions', async (req, res) => {
         if(!_fakenet)
             return res.status(400).send("FakeNet not configured")
-        if(! await _fakenet.isRunning(0))
-            return res.status(400).send("FakeNet not running")
+        var setupStatus = await _fakenet.checkSetupStatus()
+        if(!setupStatus.done)
+            return res.status(400).send("FakeNet Setup not done")
         var count = parseInt(req.body.params[0]);
         res.send(await _fakenet.createTransactions(count));
     })
-    app.post('/mine', async (req, res) => {
+    _post('/mine', async (req, res) => {
         if(!_fakenet)
             return res.status(400).send("FakeNet not configured")
-        if(! await _fakenet.isRunning(0))
-            return res.status(400).send("FakeNet not running")
+        var setupStatus = await _fakenet.checkSetupStatus()
+        if(!setupStatus.done)
+            return res.status(400).send("FakeNet Setup not done")
         var count = parseInt(req.body.params[0]);
         res.send(await _fakenet.mineBlocks(count));
     })
-    app.post('/broadcast', async (req, res) => {
+    _post('/broadcast', async (req, res) => {
         if(!_fakenet)
             return res.status(400).send("FakeNet not configured")
-        if(! await _fakenet.isRunning(0))
-            return res.status(400).send("FakeNet not running")
+        var setupStatus = await _fakenet.checkSetupStatus()
+        if(!setupStatus.done)
+            return res.status(400).send("FakeNet Setup not done")
         var hexTx = req.body.params[0].toString();
         res.send(await _fakenet.broadcast(hexTx));
     })
@@ -109,9 +118,9 @@ const port = 3000;
     // var page = fs.readFileSync("./serviceHome.html").toString()
     //     .replace("<<<defaultOptions>>>", defaultOptions)
 
-    app.get('/', (req, res) => res.send(
+    _get('/', (req, res) => res.send(
         fs.readFileSync("./serviceHome.html").toString()
-        .replace("<<<defaultOptions>>>", defaultOptions)
+            .replace("<<<defaultOptions>>>", defaultOptions)
     ));
 
     var server = app.listen(port, () => console.log(`Example app listening at http://localhost:${port}`))

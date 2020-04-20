@@ -205,9 +205,9 @@ function FakeTxHandler(broadcastFunction, o = {
                     opReturn = opReturnTexts[getRandomIndex(opReturnTexts.length)];
 
                 try {
-                    var tx = createTransaction(inputs, outputWifArray[0], outputWifArray, null, opReturn)
-                    transactions.push(tx.hex);
+                    var tx = createTransaction(inputs, outputWifArray[0], outputWifArray, null, opReturn);
                     await broadcast(tx.hex);
+                    transactions.push(tx.hex);
                     utxoData = utxoData.concat(tx.utxo);
                 } catch (error) {
                     console.error("Broadcast Failed. Deleting problematic inputs.\n"
@@ -217,7 +217,7 @@ function FakeTxHandler(broadcastFunction, o = {
 
             return utxoData;
         })
-        return transactions.length;
+        return transactions;
     }
 
     async function getFunds(satoshis) {
