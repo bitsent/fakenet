@@ -1,9 +1,10 @@
 {
   "name": "fakenet",
-  "version": "0.0.3",
+  "version": "0.1.0",
   "description": "A fake bitcoin network running locally (uses RegTest mode of bitcoind).",
   "main": "index.js",
   "scripts": {
+    "service": "node ./runService.js",
     "test": "echo \"Error: no test specified\" && exit 1"
   },
   "author": "Aleksandar Dinkov",
