@@ -248,25 +248,5 @@ function FakeNet(o = defaultOptions) {
 
 FakeNet.defaultOptions = defaultOptions;
 
-FakeNet.getDockerImages = async function getDockerImages() {
-    if(fs.existsSync("docker-sv"))
-        require('rimraf').sync("docker-sv");
-    await myExec("git clone https://github.com/bitcoin-sv/docker-sv.git docker-sv");
-
-    var contents = fs.readdirSync("./docker-sv/sv/");
-    contents.forEach(content => {
-        if(!fs.statSync(path.join("./docker-sv/sv/", content)).isDirectory())
-            return;
-        var dockerFilePath = path.join("./docker-sv/sv/", content, "Dockerfile");
-        if(!fs.existsSync(dockerFilePath))
-            return;
-        var lines = fs.readFileSync(dockerFilePath).toString().split("\n");
-        var linesFixed = lines.map(l => l.replace(/CMD \[?\"bitcoind\"\]?/, 'CMD ["node", "service.js"]'))
-        fs.writeFileSync(dockerFilePath, linesFixed.join("\n"));
-    });
-}
-
-
-
 module.exports = FakeNet;
 
