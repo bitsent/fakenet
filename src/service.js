@@ -2,12 +2,9 @@ const FakeNet = require("./fakeNet");
 const fs = require("fs");
 const express = require('express');
 
-async function runService() {
+async function runService(port = 3000) {
     const app = express();
     app.use(express.json());
-
-    const port = 3000;
-
 
     function wrap(app, realMethod, callType, path, handler) {
         var wrappedHandler = async (req, res) => {
