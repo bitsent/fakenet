@@ -1,30 +1,29 @@
-var fakeNet = require("./index");
-var fs = require("fs");
-
+const FakeNet = require("./fakeNet");
+const fs = require("fs");
 const express = require('express');
 
-const app = express();
-app.use(express.json());
+async function runService() {
+    const app = express();
+    app.use(express.json());
 
-const port = 3000;
-
-
-function wrap(app, realMethod, callType, path, handler) {
-    var wrappedHandler = async (req, res) => {
-        var logLineStart = `${callType} ${path}`;
-        var space = '.'.repeat(Math.max(4, 30-logLineStart.length));
-        console.log(`${logLineStart} ${space} body: ${JSON.stringify(req.body)}`)
-        try { await handler(req,res); }
-        catch (error) { res.status(500).send(error+""); }
-    };
-    return realMethod.call(app, path, wrappedHandler);
-}
-
-var _get = (path,handler) => wrap(app, app.get, "GET", path, handler);
-var _post = (path,handler) => wrap(app, app.post, "POST", path, handler);
+    const port = 3000;
 
 
-(async function () {
+    function wrap(app, realMethod, callType, path, handler) {
+        var wrappedHandler = async (req, res) => {
+            var logLineStart = `${callType} ${path}`;
+            var space = '.'.repeat(Math.max(4, 30-logLineStart.length));
+            console.log(`${logLineStart} ${space} body: ${JSON.stringify(req.body)}`)
+            try { await handler(req,res); }
+            catch (error) { res.status(500).send(error+""); }
+        };
+        return realMethod.call(app, path, wrappedHandler);
+    }
+
+    var _get = (path,handler) => wrap(app, app.get, "GET", path, handler);
+    var _post = (path,handler) => wrap(app, app.post, "POST", path, handler);
+
+
     var _fakenet = null;
 
     _get('/status', async (req, res) => {
@@ -43,7 +42,7 @@ var _post = (path,handler) => wrap(app, app.post, "POST", path, handler);
     _post('/configure', async (req, res) => {
         if(_fakenet)
             return res.status(400).send("FakeNet already configured")
-        _fakenet = fakeNet(req.body.params[0] || {});
+        _fakenet = FakeNet(req.body.params[0] || {});
         res.send("done")
     })
     _post('/setup', async (req, res) => {
@@ -114,14 +113,13 @@ var _post = (path,handler) => wrap(app, app.post, "POST", path, handler);
         res.send(await _fakenet.broadcast(hexTx));
     })
 
-    var defaultOptions = JSON.stringify(fakeNet.defaultOptions, null, 2);
-    // var page = fs.readFileSync("./serviceHome.html").toString()
-    //     .replace("<<<defaultOptions>>>", defaultOptions)
+    var defaultOptions = JSON.stringify(FakeNet.defaultOptions, null, 2);
+    var page = fs.readFileSync("./serviceHome.html").toString()
+        .replace("<<<defaultOptions>>>", defaultOptions)
 
-    _get('/', (req, res) => res.send(
-        fs.readFileSync("./serviceHome.html").toString()
-            .replace("<<<defaultOptions>>>", defaultOptions)
-    ));
+    _get('/', (req, res) => res.send(page));
 
     var server = app.listen(port, () => console.log(`Example app listening at http://localhost:${port}`))
-})()
+}
+
+module.exports = { runService };

@@ -1,4 +1,4 @@
-var fakeNet = require("./index");
+var fakeNet = require("./fakeNet");
 
 (async function () {
     var fakenet = fakeNet({ });

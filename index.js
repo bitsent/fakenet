@@ -1,3 +1,6 @@
-var fakeNet = require("./fakeNet")
+var FakeNet = require("./src/fakeNet")
+var service = require("./src/service")
 
-module.exports = fakeNet
+FakeNet.service = service;
+
+module.exports = FakeNet
