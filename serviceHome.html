@@ -1,0 +1,404 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <title>FakeNet Service</title>
+</head>
+<style>
+    html,
+    body {
+        margin: 0;
+        padding: 0;
+    }
+
+    #title {
+        background-color: black;
+        color: white;
+        text-align: center;
+        padding: 0.2rem;
+    }
+
+    #requestAreas {
+        padding: 3em;
+    }
+
+    #requestAreas .requestTestArea {
+        min-height: 200px;
+        border: 1px solid black;
+        background-color: cornsilk;
+        text-align: center;
+        padding: 1em;
+        margin: 1em auto;
+        display: flex;
+        flex-direction: row;
+        flex-wrap: wrap;
+    }
+
+    #requestAreas .requestTestArea > div {
+        width: 40%;
+        display: block;
+        margin: 1em auto;
+    }
+
+    #requestAreas .requestTestArea > div * {
+        width: 80%;
+        display: block;
+        margin: 1em auto;
+    }
+
+    pre {
+        background-color: gray;
+        color: white;
+        overflow: scroll;
+        resize: vertical;
+        display: block;
+        width: 60%;
+    }
+</style>
+
+<body>
+    <div id="title">
+        <h1>FakeNet Service</h1>
+    </div>
+    <div id="requestAreas">
+
+
+
+        <!-- <div class="requestTestArea">
+            <div>
+                <h2>Configure</h2>
+                <span>configuration json</span>
+                <textarea name="options" id="options" cols="30" rows="5"> </textarea>
+                <button 
+                    onclick="req('post', '/configure', jsonParseInputValue(options), 'answerConfigure')">
+                    Submit
+                </button>
+            </div>
+            <pre style="display:block;" id="answerConfigure"></pre>
+        </div>
+        
+        <div class="requestTestArea">
+            <div>
+                <h2>Status</h2>
+                <button 
+                    onclick="req('get', '/status', undefined, 'answerStatus')">
+                    Check
+                </button>
+            </div>
+            <pre style="display:block;" id="answerStatus"></pre>
+        </div>
+        
+        <div class="requestTestArea">
+            <div>
+                <h2>Start</h2>
+                <button 
+                    onclick="req('post', '/start', {}, 'answerStart')">
+                    Start
+                </button>
+            </div>
+            <pre style="display:block;" id="answerStart"></pre>
+        </div>
+        
+        <div class="requestTestArea">
+            <div>
+                <h2>Stop</h2>
+                <button 
+                    onclick="req('post', '/stop', {}, 'answerStop')">
+                    Stop
+                </button>
+            </div>
+            <pre style="display:block;" id="answerStop"></pre>
+        </div>
+        
+        <div class="requestTestArea">
+            <div>
+                <h2>Delete</h2>
+                <button 
+                    onclick="req('post', '/delete', {}, 'answerDelete')">
+                    Delete
+                </button>
+            </div>
+            <pre style="display:block;" id="answerDelete"></pre>
+        </div>
+        
+        <div class="requestTestArea">
+            <div>
+                <h2>Get Funds</h2>
+                <span>Amount (in satoshis)</span>
+                <input type="number" name="amount" id="amount">
+                <button 
+                    onclick="req('post', '/getFunds', amount.value, 'answerGetFunds')">
+                    Get
+                </button>
+            </div>
+            <pre style="display:block;" id="answerGetFunds"></pre>
+        </div> -->
+
+    </div>
+
+    <script>
+        var defaultValues = {
+            configure: `<<<defaultOptions>>>`,
+            getFunds: "10000000",
+            execute: "getInfo",
+            createTransactions: "5",
+            mine: "2",
+            broadcast: "",
+        }
+
+        var inputHints = {
+            configure: "configuration json",
+            getFunds: "amount in satoshis",
+            execute: "bitcoin-cli command",
+            createTransactions: "tx count",
+            mine: "block count",
+            broadcast: "transaction in hex",
+        }
+
+        var formData = [
+            {
+                path: "/status",
+                type: "GET",
+                title: "status",
+                inputs: [ ],
+                buttonText: "Send"
+            },
+            {
+                path: "/configure",
+                type: "POST",
+                title: "configure",
+                inputs: [
+                    {
+                        type: "textarea",
+                        hint: inputHints["configure"],
+                        defaultValue: defaultValues["configure"],
+                        parseData: (v) => JSON.parse(v)
+                    }
+                ],
+                buttonText: "Send"
+            },
+            {
+                path: "/info",
+                type: "GET",
+                title: "info",
+                inputs: [ ],
+                buttonText: "Send"
+            },
+            {
+                path: "/setupStatus",
+                type: "GET",
+                title: "setupStatus",
+                inputs: [ ],
+                buttonText: "Send"
+            },
+            {
+                path: "/setup",
+                type: "POST",
+                title: "setup",
+                inputs: [ ],
+                buttonText: "Send"
+            },
+            {
+                path: "/start",
+                type: "POST",
+                title: "start",
+                inputs: [ ],
+                buttonText: "Send"
+            },
+            {
+                path: "/stop",
+                type: "POST",
+                title: "stop",
+                inputs: [ ],
+                buttonText: "Send"
+            },
+            {
+                path: "/delete",
+                type: "POST",
+                title: "delete",
+                inputs: [ ],
+                buttonText: "Send"
+            },
+            {
+                path: "/getFunds",
+                type: "POST",
+                title: "getFunds",
+                inputs: [
+                    {
+                        type: "number",
+                        hint: inputHints["getFunds"],
+                        defaultValue: defaultValues["getFunds"],
+                        parseData: (v) => parseInt(v)
+                    }
+                ],
+                buttonText: "Send"
+            },
+            {
+                path: "/execute",
+                type: "POST",
+                title: "execute",
+                inputs: [
+                    {
+                        type: "textarea",
+                        hint: inputHints["execute"],
+                        defaultValue: defaultValues["execute"],
+                        parseData: (v) => v
+                    }
+                ],
+                buttonText: "Send"
+            },
+            {
+                path: "/createTransactions",
+                type: "POST",
+                title: "createTransactions",
+                inputs: [
+                    {
+                        type: "number",
+                        hint: inputHints["createTransactions"],
+                        defaultValue: defaultValues["createTransactions"],
+                        parseData: (v) => parseInt(v)
+                    }
+                ],
+                buttonText: "Send"
+            },
+            {
+                path: "/mine",
+                type: "POST",
+                title: "mine",
+                inputs: [
+                    {
+                        type: "number",
+                        hint: inputHints["mine"],
+                        defaultValue: defaultValues["mine"],
+                        parseData: (v) => parseInt(v)
+                    }
+                ],
+                buttonText: "Send"
+            },
+            {
+                path: "/broadcast",
+                type: "POST",
+                title: "broadcast",
+                inputs: [
+                    {
+                        type: "textarea",
+                        hint: inputHints["broadcast"],
+                        defaultValue: defaultValues["broadcast"],
+                        parseData: (v) => v
+                    }
+                ],
+                buttonText: "Send"
+            },
+        ]
+
+        var formsHtml = formData.map(form => {
+            var t = "\t\t\t\t\t\t";
+            var inputIDs = form.inputs.map((v,i) => `input_${form.title}_${i}`);
+
+            var inputsHTML = form.inputs.map((v,i) => {
+                var hint = v.hint? t+'<span>' + v.hint + '</span>': '';
+                var input = v.type == "textarea" 
+                    ? t + `<textarea id="${inputIDs[i]}" style="resize:vertical;">${v.defaultValue}</textarea>` // rows="5"
+                    : t + `<input type="${v.type}" value="${v.defaultValue}" >`;
+                return "\n" + hint + "\n" + input;
+            }).join("\n");
+            
+            var getParams = function () {
+                if(!form.inputs) return;
+
+                return form.inputs.map((v,i) => {
+                    var val = window[inputIDs[i]].value;
+                    try {
+                        v.parseData(val)
+                    } catch (error) {
+                        alert("Data Parsing Failed: \n" + error + "\n\n Value = " + val);
+                        throw error;
+                    }
+                });
+            }
+
+            window[`form_${form.title}_button_onclick`] = function () {
+                return req(
+                    form.type,
+                    form.path, 
+                    getParams(),
+                    `answer_${form.title}`
+                );
+            };
+
+            return `
+                <div class="requestTestArea">
+                    <div>
+                        <h2>${form.type} /${form.title}</h2>
+                        ${inputsHTML}
+                        <button onclick="window['form_${form.title}_button_onclick']()"> ${form.buttonText} </button>
+                    </div>
+                    <pre id="answer_${form.title}"></pre>
+                </div>`;
+
+        });
+        
+        requestAreas.innerHTML = formsHtml.join("")
+
+
+    </script>
+
+    <script>
+        // options.value = `<<<defaultOptions>>>`;
+        // amount.value = parseInt(`<<<defaultAmount>>>`) || 5000000;
+    </script>
+
+    <script>
+        async function req(method, path, body, showResultsInId) {
+            method = method.toLowerCase();
+
+            var resultContainer = document.getElementById(showResultsInId);
+            resultContainer.style.display = "";
+            resultContainer.innerHTML = "loading..."
+
+            try {
+                let response = null;
+                if (method == "post") {
+                    var fetchOptions = { method: method };
+                    if(body) {
+                        fetchOptions.body = JSON.stringify({params:body}),
+                        fetchOptions.headers = { 'Content-Type': 'application/json' }
+                    }
+                    response = await fetch(path, );
+                }
+                else if (method == "get")
+                    response = await fetch(path, { method: method });
+
+                var result = await response.text();
+                try {
+                    var result = JSON.stringify(JSON.parse(result), null, 2);
+                } catch (error) { }
+
+                result = escapeHtml(result);
+                resultContainer.innerHTML = result;
+            } catch (error) {
+                resultContainer.innerHTML = escapeHtml(error.toString());
+            }
+        }
+
+        var entityMap = {
+            '&': '&amp;',
+            '<': '&lt;',
+            '>': '&gt;',
+            '"': '&quot;',
+            "'": '&#39;',
+            '/': '&#x2F;',
+            '`': '&#x60;',
+            '=': '&#x3D;'
+        };
+
+        function escapeHtml(string) {
+            return String(string).replace(/[&<>"'`=\/]/g, function (s) {
+                return entityMap[s];
+            });
+        }
+    </script>
+</body>
+
+</html>

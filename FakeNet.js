@@ -28,7 +28,9 @@ const defaultOptions = {
     ],
     existingContainerId : null,
     tryAttachToLastContainer: false,
-    newBlockCallback: (block) => console.log(`NEW BLOCK! #${block.height} (${block.tx.length} transactions)`)
+    newBlockCallback: (block) => console.log(`NEW BLOCK! #${block.height} (${block.tx.length} transactions)`),
+    runBitcoindLocally : false,
+    bitcoindPath : ".",
 }
 
 function FakeNet(o = defaultOptions) {
@@ -44,7 +46,11 @@ function FakeNet(o = defaultOptions) {
     bitcoindParams = o.bitcoindParams || defaultOptions.bitcoindParams;
     existingContainerId = o.existingContainerId || defaultOptions.existingContainerId;
     tryAttachToLastContainer = o.tryAttachToLastContainer || defaultOptions.tryAttachToLastContainer;
-
+    runBitcoindLocally = o.runBitcoindLocally || defaultOptions.runBitcoindLocally;
+    bitcoindPath = o.bitcoindPath || defaultOptions.bitcoindPath;
+    
+    _setupCalled = false
+    _setupDone = false
     _activeLoopId = null;
     _fakeTxHandler = new FakeTxHandler(broadcast);
     _minerPrivKey = bsv.PrivateKey.fromRandom("regtest");
@@ -90,6 +96,17 @@ function FakeNet(o = defaultOptions) {
         return block;
     }
     
+    function getRegtestStartCommand(){
+        var paramList = bitcoindParams.concat([]);
+        paramList.push("-daemon");
+        paramList.push("-port=" + port);
+        paramList.push("-rpcport=" + rpcport);
+        paramList.push("-rpcuser=" + rpcuser);
+        paramList.push("-rpcpassword=" + rpcpassword);
+        var paramStr = "" + paramList.join(", ");
+        return 'bitcoind -regtest ' + (paramStr? ", " + paramStr: "");
+    }
+
     function getDockerRegtestCMD() {
         var paramList = bitcoindParams.concat([]);
         paramList.push("-port=" + port);
@@ -116,35 +133,71 @@ function FakeNet(o = defaultOptions) {
             var linesFixed = lines.map(l => l.replace(/CMD \[?\"bitcoind\"\]?/, getDockerRegtestCMD()))
             fs.writeFileSync(dockerFilePath, linesFixed.join("\n"));
         });
-    } 
+    }
+
+    async function getDockerImagesForFakenet() {
+        if(fs.existsSync("docker-fakenet"))
+            require('rimraf').sync("docker-fakenet");
+        await myExec("git clone https://github.com/bitcoin-sv/docker-sv.git docker-fakenet");
+
+        var contents = fs.readdirSync("./docker-fakenet/sv/");
+        contents.forEach(content => {
+            if(!fs.statSync(path.join("./docker-fakenet/sv/", content)).isDirectory())
+                return;
+            var dockerFilePath = path.join("./docker-fakenet/sv/", content, "Dockerfile");
+            if(!fs.existsSync(dockerFilePath))
+                return;
+            var lines = fs.readFileSync(dockerFilePath).toString().split("\n");
+            var linesFixed = lines.map(l => l.replace(/CMD \[?\"bitcoind\"\]?/, `CMD ["node" ".\runLocally.js"]`))
+            fs.writeFileSync(dockerFilePath, linesFixed.join("\n"));
+        });
+    }
+
+    async function checkSetupStatus()
+    {
+        return {
+            called: _setupCalled,
+            done: _setupDone
+        };
+    }
 
     async function setup() {
-        if (tryAttachToLastContainer === true)
+        if (_setupCalled)
+            throw new Error("Setup already called");
+        _setupCalled = true;
+
+        if (!runBitcoindLocally && tryAttachToLastContainer)
             existingContainerId = existingContainerId || await getLastContainerId();
 
-        var shouldInitialize = !existingContainerId
-        if (shouldInitialize) {
+        if (runBitcoindLocally) {
+            var command = getRegtestStartCommand();
+            await myExec(command);
+            existingContainerId = null;
+        }
+        else if (!existingContainerId) {
             var imageName = dockerImageName.replace("{version}", version);
             await getDockerImages();
             await myExec("docker build -t " + imageName + " .\\docker-sv\\sv\\" + version);
             await myExec("docker run -p " + port + ":" + port + " -p " + rpcport + ":" + rpcport + " -d -t " + imageName);
-
             existingContainerId = await getLastContainerId();
         }
         
-        if(shouldInitialize){
+        if(runBitcoindLocally || existingContainerId){
             await _fakeTxHandler.reset();
             await awaitableTimeout(async () => {
                 var block = await mineBlocks(101)
                 console.log("LOADED : #" + block.height);
             }, 5000);
         }
+
+        _setupDone;
     }
 
     async function executeBitcoinCliCommand(command) {
-        var executeOnBitcoinCli = `docker exec ${existingContainerId} `+
-            `bitcoin-cli -regtest -rpcport=${rpcport} -rpcuser=${rpcuser} -rpcpassword=${rpcpassword} `;
-
+        var executeOnBitcoinCli = ` -regtest -rpcport=${rpcport} -rpcuser=${rpcuser} -rpcpassword=${rpcpassword} `;
+        if(runBitcoindLocally) executeOnBitcoinCli = path.join(bitcoindPath, "bitcoin-cli") + executeOnBitcoinCli
+        else executeOnBitcoinCli = `docker exec ${existingContainerId} bitcoin-cli` + executeOnBitcoinCli;
+        
         var output = await myExec(executeOnBitcoinCli + command);
 
         try {
@@ -163,7 +216,8 @@ function FakeNet(o = defaultOptions) {
     async function start() {
         if (_activeLoopId)
             throw new Error("Fakenet is already running.");
-        await setup();
+        if(!_setupCalled)
+            await setup();
 
         var repeatFunction = async () =>{
             try {
@@ -182,6 +236,10 @@ function FakeNet(o = defaultOptions) {
         repeatFunction();
     }
 
+    async function isRunning() {
+        return !!_activeLoopId;
+    }
+
     async function stop() {
         if (!_activeLoopId)
             throw new Error("Fakenet is already stopped.");
@@ -193,15 +251,19 @@ function FakeNet(o = defaultOptions) {
         executeBitcoinCliCommand,
         createTransactions,
         getDockerImages,
+        checkSetupStatus,
         setup,
         start,
         stop,
+        isRunning,
         getInfo,
         getFunds,
         mineBlocks,
         broadcast,
     }
 }
+
+FakeNet.defaultOptions = defaultOptions;
 
 module.exports = FakeNet;
 
