@@ -114,7 +114,7 @@ async function runService() {
     })
 
     var defaultOptions = JSON.stringify(FakeNet.defaultOptions, null, 2);
-    var page = fs.readFileSync("./serviceHome.html").toString()
+    var page = fs.readFileSync("./src/serviceHome.html").toString()
         .replace("<<<defaultOptions>>>", defaultOptions)
 
     _get('/', (req, res) => res.send(page));
