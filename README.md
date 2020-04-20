@@ -14,22 +14,33 @@ Run a fake Bitcoin network locally.
 The code bellow will run a Bitcoin Node which will create a new block every minute and will put ~20 transactions in each block.
 
 ```js
-var fakeNet = require("fakenet");
+var FakeNet = require("fakenet");
 
-var fakenet = fakeNet();
+var fakenet = FakeNet();
 fakenet.start();
 ```
 
 Or If you want to reuse an existing container with Bitcoin RegTest, simply pass the container ID.
 
 ```js
-var fakeNet = require("fakenet");
+var FakeNet = require("fakenet");
 
-var fakenet = fakeNet({
+var fakenet = FakeNet({
     existingContainerId = "<the container ID>"
 });
 fakenet.start();
 ```
+
+# Run with API (& simple GUI)
+
+FakeNet can also be started as a server. This way the library can be used remotely.
+
+```js
+var FakeNet = require("fakenet");
+FakeNet.service.runService(port=5000);
+```
+
+> Unfortunately, the automatic setup still depends on Docker, so for the moment there is no trivial way to run the FakeNet service in its own container.
 
 # Get Some Coins
 
@@ -38,8 +49,8 @@ Running the network is all nice and dandy, but you won't be able to do much with
 This is how to do it:
 
 ```js
-var fakeNet = require("fakenet");
-var fakenet = fakeNet();
+var FakeNet = require("fakenet");
+var fakenet = FakeNet();
 fakenet.start();
 
 var utxo = await fakenet.getFunds(10000000);
