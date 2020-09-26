@@ -1,5 +1,6 @@
 const FakeNet = require("./fakeNet");
 const fs = require("fs");
+const path = require("path");
 const express = require('express');
 
 async function runService(port = 3000) {
@@ -111,7 +112,8 @@ async function runService(port = 3000) {
     })
 
     var defaultOptions = JSON.stringify(FakeNet.defaultOptions, null, 2);
-    var page = fs.readFileSync("./src/serviceHome.html").toString()
+    var filePath = path.join(__dirname, '/serviceHome.html');
+    var page = fs.readFileSync(filePath).toString()
         .replace("<<<defaultOptions>>>", defaultOptions)
 
     _get('/', (req, res) => res.send(page));
