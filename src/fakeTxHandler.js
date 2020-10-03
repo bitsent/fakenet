@@ -1,11 +1,12 @@
 var fs = require("fs");
 var bsv = require("bsv");
 var Lock = require("lock-taskqueue");
+var path = require("path");
 
 SATS_IN_B = 100000000;
 
-default_utxoFile = "utxo.json";
-default_utxoCoinbaseFile = "utxo_coinbase.json";
+default_utxoFile = path.join(__dirname,  "utxo.json");
+default_utxoCoinbaseFile = path.join(__dirname,  "utxo_coinbase.json");
 default_chances = {
     plusOneInputChance: 0.33,
     plusOneOutputChance: 0.40,
@@ -124,7 +125,7 @@ function FakeTxHandler(broadcastFunction, o = {
         var tx = bsv.Transaction();
         for (let i = 0; i < inputs.length; i++)
             tx=tx.from(asInput(inputs[i]));
-        
+
         for (let i = 0; i < outputWifArray.length; i++)
             tx=tx.to(wifToAddr(outputWifArray[i]), perOutputAmount);
 
